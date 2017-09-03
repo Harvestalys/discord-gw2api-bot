@@ -12,6 +12,7 @@ import (
 
 var discordToken string
 var userList Users
+var resources Resources
 
 func init() {
 
@@ -55,6 +56,11 @@ func main() {
 	}
 
 	userList.fromJsonFile()
+	resources.fromJsonFile()
+
+	//TODO: funktioniert noch nicht!?
+	dummy := resources.Translations["tomorrowsDailies"]
+	fmt.Printf("translation: %s\n", dummy)
 
 	// wait for CTRL+C or other terminate signal is received
 	fmt.Println("main(): bot is now running (CTRL+C to exit)")

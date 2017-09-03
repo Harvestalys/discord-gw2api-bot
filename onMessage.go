@@ -31,7 +31,7 @@ func shouldBotHandleCommand(session *discordgo.Session, message *discordgo.Messa
 
 	var isBotMentioned = checkForMention(message.Mentions, session.State.User)
 
-	var isPrefix = strings.HasPrefix(message.Content, "!")
+	var isPrefix = strings.HasPrefix(message.Content, "!") // use "!gw2api "?
 
 	channel, err := session.State.Channel(message.ChannelID)
 	if err != nil {

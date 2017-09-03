@@ -10,7 +10,36 @@ import (
 )
 
 var unauthorizedGW2API *gw2api.GW2Api
-var language string = "en"
+var language string = "de"
+
+/*
+Json lokal Speichern:
+
+[Account unabhängige daten + datum (beim start lesen, fallsälter als 7 tage neu laden, beim neu laden nach neuen ids (größte nummer) ausschau halten - push Nachricht, sonst timer für 7 tage)]
+
+Je Chat User {
+User.ID,
+API Key,
+Push channel id,
+Watchlist
+}
+
+Beim start Account unabhängige Daten anfragen
+
+Event Benutzer online/offline beachten
+Solange Benutzer online alle 5 Minuten api request machen (authenticated gw2 api objekt je user. Falls err! = nil beim nächsten request neu versuchen, sonst halten bis benutzer offline geht?)
+
+commands:
+token <account api token> - setzt das token für den user
+[need <menge> <item> - fügt Watchlist Eintrag hinzu
+done <item> - entfernt Watchlist Eintrag]
+refresh - manuelles neu laden der nicht account gebundenen daten
+
+auflisten vorhandener items/Währungen/achievements/rezepte
+
+anfragen von geldbörse [optional eine Währung]/Material/item vorrat
+(in bank, gemeinsames Inventar, Materiallager, inventar je charakter, möglich durch rezepte...)
+*/
 
 func handleCommand(session *discordgo.Session, message *discordgo.MessageCreate) {
 
@@ -18,12 +47,33 @@ func handleCommand(session *discordgo.Session, message *discordgo.MessageCreate)
 
 	unauthorizedGW2API = gw2api.NewGW2Api()
 
+	//TODO: multiplexer, command registrieren mit beschreibung, automatisch bei help anzeigen, nur an "den" richtigen handler weitergeben
 	handlePing(session, message)
 	handleVersion(session, message)
 	handleCurrencies(session, message)
 	handleCurrency(session, message)
 	handleDaily(session, message)
 	handleToken(session, message)
+
+	//TODO: SendMessage funktion die bei 2000 zeichen splittet
+
+	//TODO: MessageEmbedImage z.B. icons bei currencies
+
+	//TODO: onUserOnline/Offline wg. watchlist push
+
+	//TODO: wegmarken für Pakt-Vorratsnetz-Agenten (Chatcodes)
+
+	//TODO: implement commands
+	//TODO: wenn kein handler zum command passt: sorry message senden mit help cmd
+	//TODO: auch auf editierte nachrichten nochmal reagieren (ggf. eigene antwort editieren?)
+
+	//TODO: wie oft welchen boss im raid gelegt (falls keine overall abfrage möglich jede woche vor reset (per timer) abfragen und aufsummieren "seit datum")
+
+	//TODO: watchliste schreiben, stand abfragen, pushen
+
+	//TODO: dailies automatisch morgens abfragen und puschen (ggf. nur mystische schmiede tomorrow), in konfigurierten channel
+
+	//TODO: raidplaner (wer kann wann, welche klassen & rollen (bevorzugt/ausweichklasse) mit klassenerfahrung -> gruppenaufstellung (abhängig vom boss und ob training oder "clear" [z.B. Mo Clear VG, Do Training Gorse])
 }
 
 func handlePing(session *discordgo.Session, message *discordgo.MessageCreate) {
@@ -117,13 +167,23 @@ func handleCurrency(session *discordgo.Session, message *discordgo.MessageCreate
 	}
 }
 
-func listDailiesFromRange(category []gw2api.DailyAchievement) string {
+func getEventTitleByID(eventID int) string {
+
+	//TODO: get list/map of all (daily) events if not yet available and look up this eventID
+	//idList []int
+	//for _,
+	//achievements, err := unauthorizedGW2API.AchievementIds()
+
+	return "ID: " + strconv.Itoa(eventID)
+}
+
+func listDailiesFromRangeWithHeadline(headline string, category []gw2api.DailyAchievement) string {
 
 	dailies := ""
 
 	for _, daily := range category {
 
-		dailies += "ID: " + strconv.Itoa(daily.ID) + ", Level: " + strconv.Itoa(daily.Level.Min) + " to " + strconv.Itoa(daily.Level.Max) + " ("
+		dailies += getEventTitleByID(daily.ID) + ", Level: " + strconv.Itoa(daily.Level.Min) + " bis " + strconv.Itoa(daily.Level.Max) + " ("
 
 		for i, requirement := range daily.Requirement {
 
@@ -137,16 +197,21 @@ func listDailiesFromRange(category []gw2api.DailyAchievement) string {
 		dailies += ")\n"
 	}
 
+	if dailies != "" {
+
+		dailies = headline + "\n" + dailies
+	}
+
 	return dailies
 }
 
-func listDailies(collection gw2api.DailyAchievements) string {
+func listAllDailies(collection gw2api.DailyAchievements) string {
 
-	dailies := "PvE:\n" + listDailiesFromRange(collection.PvE)
-	dailies += "PvP:\n" + listDailiesFromRange(collection.PvP)
-	dailies += "WvW:\n" + listDailiesFromRange(collection.WvW)
-	dailies += "Fractals:\n" + listDailiesFromRange(collection.Fractals)
-	dailies += "Special:\n" + listDailiesFromRange(collection.Special)
+	dailies := listDailiesFromRangeWithHeadline("PvE:", collection.PvE)
+	dailies += listDailiesFromRangeWithHeadline("PvP:", collection.PvP)
+	dailies += listDailiesFromRangeWithHeadline("WvW:", collection.WvW)
+	dailies += listDailiesFromRangeWithHeadline("Fractals:", collection.Fractals)
+	dailies += listDailiesFromRangeWithHeadline("Special:", collection.Special)
 
 	return dailies
 }
@@ -154,40 +219,30 @@ func listDailies(collection gw2api.DailyAchievements) string {
 func handleDailyIntern(dailyStruct gw2api.DailyAchievements, message *discordgo.MessageCreate) string {
 
 	dailies := ""
-	listAll := true
 
 	if strings.Contains(message.Content, " pve") {
 
-		dailies += "PvE:\n" + listDailiesFromRange(dailyStruct.PvE)
-		listAll = false
-	}
+		dailies += listDailiesFromRangeWithHeadline("PvE:", dailyStruct.PvE)
 
-	if strings.Contains(message.Content, " pvp") {
+	} else if strings.Contains(message.Content, " pvp") {
 
-		dailies += "PvP:\n" + listDailiesFromRange(dailyStruct.PvP)
-		listAll = false
-	}
+		dailies += listDailiesFromRangeWithHeadline("PvP:", dailyStruct.PvP)
 
-	if strings.Contains(message.Content, " wvw") {
+	} else if strings.Contains(message.Content, " wvw") {
 
-		dailies += "WvW:\n" + listDailiesFromRange(dailyStruct.WvW)
-		listAll = false
-	}
+		dailies += listDailiesFromRangeWithHeadline("WvW:", dailyStruct.WvW)
 
-	if strings.Contains(message.Content, " fractals") {
+	} else if strings.Contains(message.Content, " fractals") {
 
-		dailies += "Fractals:\n" + listDailiesFromRange(dailyStruct.Fractals)
-		listAll = false
-	}
+		dailies += listDailiesFromRangeWithHeadline("Fractals:", dailyStruct.Fractals)
 
-	if strings.Contains(message.Content, " special") {
+	} else if strings.Contains(message.Content, " special") {
 
-		dailies += "Special:\n" + listDailiesFromRange(dailyStruct.Special)
-		listAll = false
-	}
+		dailies += listDailiesFromRangeWithHeadline("Special:", dailyStruct.Special)
 
-	if listAll {
-		dailies += listDailies(dailyStruct)
+	} else {
+
+		dailies += listAllDailies(dailyStruct)
 	}
 
 	return dailies
@@ -207,7 +262,7 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 				return
 			}
 
-			dailies := "Tomorrows achievements:\n" + handleDailyIntern(dailyStruct, message)
+			dailies := resources.Translations["tomorrowsDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
 			session.ChannelMessageSend(message.ChannelID, dailies)
 		} else {
@@ -220,7 +275,7 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 				return
 			}
 
-			dailies := "Todays achievements:\n" + handleDailyIntern(dailyStruct, message)
+			dailies := resources.Translations["todaysDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
 			session.ChannelMessageSend(message.ChannelID, dailies)
 		}
