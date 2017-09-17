@@ -23,7 +23,7 @@ func (userList *Users) toJsonFile() {
 
 	if err != nil {
 
-		fmt.Println("Users.toJsonFile(): could not marshal data, " + err.Error())
+		fmt.Println("Users.toJsonFile(): could not marshal data:", err.Error())
 
 		return
 	}
@@ -42,7 +42,7 @@ func (userList *Users) fromJsonFile() {
 	// error on first start expected because there will be no user file
 	if err != nil {
 
-		fmt.Println("Users.fromJsonFile(): could not read file, " + err.Error())
+		fmt.Println("Users.fromJsonFile(): could not read file:", err.Error())
 
 		return
 	}
@@ -51,7 +51,7 @@ func (userList *Users) fromJsonFile() {
 
 	if err != nil {
 
-		fmt.Println("Users.fromJsonFile(): could not unmarshal data, " + err.Error())
+		fmt.Println("Users.fromJsonFile(): could not unmarshal data:", err.Error())
 
 		return
 	}

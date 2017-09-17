@@ -9,71 +9,36 @@ import (
 	"github.com/harvestalys/gw2api"
 )
 
-var unauthorizedGW2API *gw2api.GW2Api
-var language string = "de"
-
-/*
-Json lokal Speichern:
-
-[Account unabhängige daten + datum (beim start lesen, fallsälter als 7 tage neu laden, beim neu laden nach neuen ids (größte nummer) ausschau halten - push Nachricht, sonst timer für 7 tage)]
-
-Je Chat User {
-User.ID,
-API Key,
-Push channel id,
-Watchlist
-}
-
-Beim start Account unabhängige Daten anfragen
-
-Event Benutzer online/offline beachten
-Solange Benutzer online alle 5 Minuten api request machen (authenticated gw2 api objekt je user. Falls err! = nil beim nächsten request neu versuchen, sonst halten bis benutzer offline geht?)
-
-commands:
-token <account api token> - setzt das token für den user
-[need <menge> <item> - fügt Watchlist Eintrag hinzu
-done <item> - entfernt Watchlist Eintrag]
-refresh - manuelles neu laden der nicht account gebundenen daten
-
-auflisten vorhandener items/Währungen/achievements/rezepte
-
-anfragen von geldbörse [optional eine Währung]/Material/item vorrat
-(in bank, gemeinsames Inventar, Materiallager, inventar je charakter, möglich durch rezepte...)
-*/
-
 func handleCommand(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 	fmt.Printf("handleCommand(): %s\n", message.Content)
 
-	unauthorizedGW2API = gw2api.NewGW2Api()
-
-	//TODO: multiplexer, command registrieren mit beschreibung, automatisch bei help anzeigen, nur an "den" richtigen handler weitergeben
+	handleHelp(session, message)
 	handlePing(session, message)
 	handleVersion(session, message)
 	handleCurrencies(session, message)
 	handleCurrency(session, message)
 	handleDaily(session, message)
 	handleToken(session, message)
+	handleRefresh(session, message)
+}
 
-	//TODO: SendMessage funktion die bei 2000 zeichen splittet
+func handleHelp(session *discordgo.Session, message *discordgo.MessageCreate) {
 
-	//TODO: MessageEmbedImage z.B. icons bei currencies
+	if strings.Contains(message.Content, "help") {
 
-	//TODO: onUserOnline/Offline wg. watchlist push
+		explanation := "Available Commands:\n"
 
-	//TODO: wegmarken für Pakt-Vorratsnetz-Agenten (Chatcodes)
+		explanation += "ping - answers with \"pong\"\n"
+		explanation += "version - the current build version of the GW2 client\n"
+		explanation += "currencies - list of all available currencies\n"
+		explanation += "currency X - details on currency with id X\n"
+		explanation += "daily [tomorrow] [pve|pvp|wvw|fractals|special] - list of daily achievements for today or tomorrow (if specified), full list or subset of either pve, pvp, wvw, fractals or special\n"
+		explanation += "token T - sets T as the current users token for GW2API requests that need authorization"
+		explanation += "refresh - reloads global data from the API, use this if something is missing (e.g. added to api after last request from the bot)"
 
-	//TODO: implement commands
-	//TODO: wenn kein handler zum command passt: sorry message senden mit help cmd
-	//TODO: auch auf editierte nachrichten nochmal reagieren (ggf. eigene antwort editieren?)
-
-	//TODO: wie oft welchen boss im raid gelegt (falls keine overall abfrage möglich jede woche vor reset (per timer) abfragen und aufsummieren "seit datum")
-
-	//TODO: watchliste schreiben, stand abfragen, pushen
-
-	//TODO: dailies automatisch morgens abfragen und puschen (ggf. nur mystische schmiede tomorrow), in konfigurierten channel
-
-	//TODO: raidplaner (wer kann wann, welche klassen & rollen (bevorzugt/ausweichklasse) mit klassenerfahrung -> gruppenaufstellung (abhängig vom boss und ob training oder "clear" [z.B. Mo Clear VG, Do Training Gorse])
+		session.ChannelMessageSend(message.ChannelID, explanation)
+	}
 }
 
 func handlePing(session *discordgo.Session, message *discordgo.MessageCreate) {
@@ -169,12 +134,14 @@ func handleCurrency(session *discordgo.Session, message *discordgo.MessageCreate
 
 func getEventTitleByID(eventID int) string {
 
-	//TODO: get list/map of all (daily) events if not yet available and look up this eventID
-	//idList []int
-	//for _,
-	//achievements, err := unauthorizedGW2API.AchievementIds()
+	eventName := achievements[eventID].Name
 
-	return "ID: " + strconv.Itoa(eventID)
+	if eventName == "" {
+
+		eventName = "ID: " + strconv.Itoa(eventID)
+	}
+
+	return eventName
 }
 
 func listDailiesFromRangeWithHeadline(headline string, category []gw2api.DailyAchievement) string {
@@ -183,7 +150,17 @@ func listDailiesFromRangeWithHeadline(headline string, category []gw2api.DailyAc
 
 	for _, daily := range category {
 
-		dailies += getEventTitleByID(daily.ID) + ", Level: " + strconv.Itoa(daily.Level.Min) + " bis " + strconv.Itoa(daily.Level.Max) + " ("
+		dailies += getEventTitleByID(daily.ID)
+
+		if daily.Level.Min != 1 || daily.Level.Max != 80 {
+			dailies += ", Level: " + strconv.Itoa(daily.Level.Min)
+
+			if daily.Level.Min != daily.Level.Max {
+				dailies += " bis " + strconv.Itoa(daily.Level.Max)
+			}
+		}
+
+		dailies += " ("
 
 		for i, requirement := range daily.Requirement {
 
@@ -191,7 +168,13 @@ func listDailiesFromRangeWithHeadline(headline string, category []gw2api.DailyAc
 				dailies += ", "
 			}
 
-			dailies += requirement
+			if requirement == "GuildWars2" {
+				dailies += "GW2"
+			} else if requirement == "HeartOfThorns" {
+				dailies += "HoT"
+			} else {
+				dailies += requirement
+			}
 		}
 
 		dailies += ")\n"
@@ -264,7 +247,7 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 			dailies := resources.Translations["tomorrowsDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
-			session.ChannelMessageSend(message.ChannelID, dailies)
+			sendLongMessage(session, message, dailies)
 		} else {
 
 			dailyStruct, err := unauthorizedGW2API.AchievementsDaily()
@@ -277,8 +260,43 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 			dailies := resources.Translations["todaysDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
-			session.ChannelMessageSend(message.ChannelID, dailies)
+			sendLongMessage(session, message, dailies)
 		}
+	}
+}
+
+func sendLongMessage(session *discordgo.Session, message *discordgo.MessageCreate, sendMessage string) {
+
+	const tolerance = 150
+
+	i := 0
+	maxEnd := len(sendMessage)
+
+	for i < maxEnd {
+
+		start := i
+		end := i + maxRunesPerMessage
+
+		if end > maxEnd {
+
+			// send remaining message if rest isn't longer than maxRunesPerMessage
+			end = maxEnd
+			i = end
+
+		} else {
+
+			// sending only a part of the message, check for last line break before limit
+			lb := strings.LastIndex(sendMessage[(end-tolerance):end], "\n")
+			if lb != -1 {
+				end = end - tolerance + lb
+				i = end + 1
+			} else {
+				i = end
+			}
+
+		}
+
+		session.ChannelMessageSend(message.ChannelID, sendMessage[start:end])
 	}
 }
 
@@ -289,5 +307,13 @@ func handleToken(session *discordgo.Session, message *discordgo.MessageCreate) {
 		substrings := strings.SplitAfter(message.Content, "token ")
 
 		userList.setTokenForUser(message.Author.ID, substrings[1])
+	}
+}
+
+func handleRefresh(session *discordgo.Session, message *discordgo.MessageCreate) {
+
+	if strings.Contains(message.Content, "refresh") {
+
+		requestAchievements()
 	}
 }
