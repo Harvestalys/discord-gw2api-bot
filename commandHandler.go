@@ -2,8 +2,10 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/harvestalys/discordgo"
 	"github.com/harvestalys/gw2api"
@@ -21,6 +23,94 @@ func handleCommand(session *discordgo.Session, message *discordgo.MessageCreate)
 	handleDaily(session, message)
 	handleToken(session, message)
 	handleRefresh(session, message)
+	handleEvent(session, message)
+	handleNotify(session, message)
+}
+
+func handleNotify(session *discordgo.Session, message *discordgo.MessageCreate) {
+
+	commandHandled := false
+
+	if strings.Contains(message.Content, "notify ") {
+		parts := strings.SplitAfter(message.Content, "notify ")
+
+		if strings.HasPrefix(parts[1], "update ") {
+
+			if strings.HasSuffix(parts[1], "on") {
+				if configuration.ChannelIDsForGW2Updates == nil {
+					fmt.Println("handleNotify(): ChannelIDsForGW2Updates was nil, creating with ChannelID ", message.ChannelID)
+					configuration.ChannelIDsForGW2Updates = []string{message.ChannelID}
+				} else {
+					fmt.Println("handleNotify(): ChannelIDsForGW2Updates already exists, appending ChannelID ", message.ChannelID)
+					configuration.ChannelIDsForGW2Updates = append(configuration.ChannelIDsForGW2Updates, message.ChannelID)
+				}
+				commandHandled = true
+				sendLongMessage(session, message.ChannelID, resources.Translations["notifyUpdateOnAck"])
+
+			} else if strings.HasSuffix(parts[1], "off") {
+
+				newChannelList := []string{}
+				for _, channelID := range configuration.ChannelIDsForGW2Updates {
+					if channelID != message.ChannelID {
+						newChannelList = append(newChannelList, channelID)
+					}
+				}
+				configuration.ChannelIDsForGW2Updates = newChannelList
+
+				commandHandled = true
+				sendLongMessage(session, message.ChannelID, resources.Translations["notifyUpdateOffAck"])
+			}
+		}
+
+		if !commandHandled {
+			sendLongMessage(session, message.ChannelID, "Nothing happened, please check your command.")
+		}
+	}
+}
+
+func handleEvent(session *discordgo.Session, message *discordgo.MessageCreate) {
+	if strings.Contains(strings.ToLower(message.Content), "pof") {
+
+		countdown := ""
+
+		now := time.Now()
+		release := time.Date(2017, 9, 22, 18, 0, 0, 0, time.Local)
+		diff := release.Sub(now)
+
+		hours := diff.Hours()
+		days := math.Floor(hours / 24)
+		hours = math.Floor(math.Mod(hours, 24)) // hours -= days * 24
+		minutes := math.Ceil(math.Mod(diff.Minutes(), 60))
+
+		if days > 0 {
+			countdown += " " + strconv.FormatFloat(days, 'f', 0, 64) + " Tag"
+			if days > 1 {
+				countdown += "en"
+			}
+		}
+
+		if hours > 0 {
+			countdown += " " + strconv.FormatFloat(hours, 'f', 0, 64) + " Stunde"
+			if hours > 1 {
+				countdown += "n"
+			}
+		}
+
+		if minutes > 0 {
+			countdown += " " + strconv.FormatFloat(minutes, 'f', 0, 64) + " Minute"
+			if minutes > 1 {
+				countdown += "n"
+			}
+		}
+
+		if countdown != "" {
+			countdown = "Path of Fire Release in" + countdown
+		} else {
+			countdown = "Path of Fire is HERE"
+		}
+
+		sendLongMessage(session, message.ChannelID, countdown)
+	}
 }
 
 func handleHelp(session *discordgo.Session, message *discordgo.MessageCreate) {
@@ -34,10 +124,11 @@ func handleHelp(session *discordgo.Session, message *discordgo.MessageCreate) {
 		explanation += "currencies - list of all available currencies\n"
 		explanation += "currency X - details on currency with id X\n"
 		explanation += "daily [tomorrow] [pve|pvp|wvw|fractals|special] - list of daily achievements for today or tomorrow (if specified), full list or subset of either pve, pvp, wvw, fractals or special\n"
-		explanation += "token T - sets T as the current users token for GW2API requests that need authorization"
-		explanation += "refresh - reloads global data from the API, use this if something is missing (e.g. added to api after last request from the bot)"
+		explanation += "token T - sets T as the current users token for GW2API requests that need authorization\n"
+		explanation += "refresh - reloads global data from the API, use this if something is missing (e.g. added to api after last request from the bot)\n"
+		explanation += "notify update on|off - (de)activate push notifications on GW2 updates to current channel"
 
-		session.ChannelMessageSend(message.ChannelID, explanation)
+		sendLongMessage(session, message.ChannelID, explanation)
 	}
 }
 
@@ -45,7 +136,7 @@ func handlePing(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 	if strings.Contains(message.Content, "ping") {
 
-		session.ChannelMessageSend(message.ChannelID, "Pong!")
+		sendLongMessage(session, message.ChannelID, "Pong!")
 	}
 }
 
@@ -61,7 +152,8 @@ func handleVersion(session *discordgo.Session, message *discordgo.MessageCreate)
 			return
 		}
 
-		session.ChannelMessageSend(message.ChannelID, "Version: "+strconv.Itoa(build))
+		versionMsg := resources.Translations["latestVersion"] + ": " + strconv.Itoa(build)
+		sendLongMessage(session, message.ChannelID, versionMsg)
 	}
 }
 
@@ -77,7 +169,7 @@ func handleCurrencies(session *discordgo.Session, message *discordgo.MessageCrea
 			return
 		}
 
-		currencies, err := unauthorizedGW2API.CurrencyIds(language, currencyIDs...)
+		currencies, err := unauthorizedGW2API.CurrencyIds(configuration.Language, currencyIDs...)
 
 		if err != nil {
 
@@ -85,14 +177,14 @@ func handleCurrencies(session *discordgo.Session, message *discordgo.MessageCrea
 			return
 		}
 
-		currenciesReadable := "Currencies:\n"
+		currenciesReadable := resources.Translations["currencies"] + ":\n"
 
 		for _, currency := range currencies {
 
 			currenciesReadable += strconv.Itoa(currency.ID) + ": " + currency.Name + "\n"
 		}
 
-		session.ChannelMessageSend(message.ChannelID, currenciesReadable)
+		sendLongMessage(session, message.ChannelID, currenciesReadable)
 	}
 }
 
@@ -110,7 +202,7 @@ func handleCurrency(session *discordgo.Session, message *discordgo.MessageCreate
 			return
 		}
 
-		currencies, err := unauthorizedGW2API.CurrencyIds(language, currencyID)
+		currencies, err := unauthorizedGW2API.CurrencyIds(configuration.Language, currencyID)
 
 		if err != nil {
 
@@ -128,7 +220,7 @@ func handleCurrency(session *discordgo.Session, message *discordgo.MessageCreate
 			currenciesReadable += "Icon URL: " + currency.Icon + "\n"
 		}
 
-		session.ChannelMessageSend(message.ChannelID, currenciesReadable)
+		sendLongMessage(session, message.ChannelID, currenciesReadable)
 	}
 }
 
@@ -247,7 +339,7 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 			dailies := resources.Translations["tomorrowsDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
-			sendLongMessage(session, message, dailies)
+			sendLongMessage(session, message.ChannelID, dailies)
 		} else {
 
 			dailyStruct, err := unauthorizedGW2API.AchievementsDaily()
@@ -260,12 +352,12 @@ func handleDaily(session *discordgo.Session, message *discordgo.MessageCreate) {
 
 			dailies := resources.Translations["todaysDailies"] + "\n" + handleDailyIntern(dailyStruct, message)
 
-			sendLongMessage(session, message, dailies)
+			sendLongMessage(session, message.ChannelID, dailies)
 		}
 	}
 }
 
-func sendLongMessage(session *discordgo.Session, message *discordgo.MessageCreate, sendMessage string) {
+func sendLongMessage(session *discordgo.Session, channelID string, sendMessage string) {
 
 	const tolerance = 150
 
@@ -296,7 +388,7 @@ func sendLongMessage(session *discordgo.Session, message *discordgo.MessageCreat
 
 		}
 
-		session.ChannelMessageSend(message.ChannelID, sendMessage[start:end])
+		session.ChannelMessageSend(channelID, sendMessage[start:end])
 	}
 }
 

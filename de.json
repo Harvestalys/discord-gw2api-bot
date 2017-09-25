@@ -1,6 +1,11 @@
 {
 	"Translations": {
 		"todaysDailies" : "Heutige tägliche Erfolge:",
-		"tomorrowsDailies" : "Morgige tägliche Erfolge:"
+		"tomorrowsDailies" : "Morgige tägliche Erfolge:",
+		"currencies" : "Währungen",
+		"latestVersion" : "Aktuelle Version",
+		"newVersionReleased" : "Eine neue Version wurde veröffentlicht: ",
+		"notifyUpdateOnAck" : "Ich werde Nachrichten an diesen Channel senden wenn es Updates gibt :smiley:",
+		"notifyUpdateOffAck" : "Ich werde keine Nachrichten über Updates mehr an diesen Channel senden"
 	}
 }

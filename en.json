@@ -1,6 +1,11 @@
 {
 	"Translations": {
 		"todaysDailies" : "Todays daily achievements:",
-		"tomorrowsDailies" : "Tomorrows daily achievements:"
+		"tomorrowsDailies" : "Tomorrows daily achievements:",
+		"currencies" : "Currencies",
+		"latestVersion" : "Latest version",
+		"newVersionReleased" : "A new build was released: ",
+		"notifyUpdateOnAck" : "I will be pushing update notifications to this channel now :smiley:",
+		"notifyUpdateOffAck" : "I won't be pushing any more update notifications to this channel"
 	}
 }

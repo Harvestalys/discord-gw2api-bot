@@ -10,7 +10,7 @@ type Resources struct {
 	Translations map[string]string `json:"Translations"`
 }
 
-func (resources *Resources) fromJsonFile() {
+func (resources *Resources) fromJsonFile(language string) {
 
 	raw, err := ioutil.ReadFile(language + ".json")
 
@@ -21,9 +21,8 @@ func (resources *Resources) fromJsonFile() {
 		if language != "en" {
 
 			// try english as fallback
-			fmt.Println("Resource.fromJsonFile(): setting language to \"en\" as fallback")
-			language = "en"
-			resources.fromJsonFile()
+			fmt.Println("Resource.fromJsonFile(): using \"en\" as fallback")
+			resources.fromJsonFile("en")
 		}
 
 		return

@@ -7,19 +7,27 @@ import (
 	"os/signal"
 	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/harvestalys/discordgo"
 	"github.com/harvestalys/gw2api"
 )
 
 var discordToken string
-var language string
 
 var userList Users
 var resources Resources
+var configuration Configuration
 
 var unauthorizedGW2API *gw2api.GW2Api
 var achievements map[int]gw2api.Achievement
+
+var ticker *time.Ticker
+var discordSession *discordgo.Session
+
+const serviceNameShort = "discordgw2apibot"
+const serviceNameLong = "Discord GW2 API Bot"
+const displayName = "T.O.N." // Tyria Notifier and Observer
 
 const maxRunesPerMessage = 2000
 
@@ -28,11 +36,10 @@ func init() {
 	fmt.Println("init(): parsing arguments")
 
 	flag.StringVar(&discordToken, "token", "", "Authentication token")
-	flag.StringVar(&language, "lang", "en", "Language to use")
 
 	flag.Parse()
 
-	fmt.Println("init(): token:", discordToken, " language:", language)
+	fmt.Println("init(): token:", discordToken)
 }
 
 func main() {
@@ -45,7 +52,8 @@ func main() {
 		return
 	}
 
-	dg, err := discordgo.New("Bot " + discordToken)
+	var err error
+	discordSession, err = discordgo.New("Bot " + discordToken)
 
 	if err != nil {
 
@@ -54,10 +62,10 @@ func main() {
 	}
 
 	// register callback for all MessageCreate events
-	dg.AddHandler(onMessage)
+	discordSession.AddHandler(onMessage)
 
 	// open websocket to Discord and begin listening
-	err = dg.Open()
+	err = discordSession.Open()
 
 	if err != nil {
 
@@ -65,26 +73,73 @@ func main() {
 		return
 	}
 
+	// read persistent bot data from files
+	configuration.fromJsonFile()
 	userList.fromJsonFile()
-	resources.fromJsonFile()
+	resources.fromJsonFile(configuration.Language)
 
+	// initialize GW2 API data
 	unauthorizedGW2API = gw2api.NewGW2Api()
 	requestAchievements()
 
-	// wait for CTRL+C or other terminate signal is received
+	checkForNewGW2Version()
+	startGW2UpdateWatcher()
+
 	fmt.Println("main(): bot is now running (CTRL+C to exit)")
 
+	// wait for CTRL+C or other terminate signal is received
 	sc := make(chan os.Signal, 1)
 	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
 	<-sc
 
 	fmt.Println("main(): terminate signal received, closing connection")
 
-	dg.Close()
+	// cleanup
+	ticker.Stop()
+	discordSession.Close()
 
+	// save persistent bot data to files
+	configuration.toJsonFile()
 	userList.toJsonFile()
 
 	fmt.Println("main(): exit")
+}
+
+func readVersionNumber() int {
+
+	build, err := unauthorizedGW2API.Build()
+
+	if err != nil {
+		return configuration.LatestGW2Version
+	}
+
+	return build
+}
+
+func handleGW2Update(newVersion int) {
+
+	configuration.LatestGW2Version = newVersion
+
+	readFeed(newVersion, configuration.Language)
+}
+
+func checkForNewGW2Version() {
+
+	currentVersion := readVersionNumber()
+	if currentVersion > configuration.LatestGW2Version {
+		handleGW2Update(currentVersion)
+	}
+}
+
+func startGW2UpdateWatcher() {
+
+	ticker = time.NewTicker(time.Minute * time.Duration(configuration.UpdateCheckMinutes))
+
+	go func() {
+		for range ticker.C {
+			checkForNewGW2Version()
+		}
+	}()
 }
 
 func requestAchievements() {
@@ -101,7 +156,7 @@ func requestAchievements() {
 
 		pageSize := 200
 
-		achievs, err := unauthorizedGW2API.AchievementPages(language, i, pageSize)
+		achievs, err := unauthorizedGW2API.AchievementPages(configuration.Language, i, pageSize)
 
 		if err != nil {
 
