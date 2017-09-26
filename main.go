@@ -120,7 +120,15 @@ func handleGW2Update(newVersion int) {
 
 	configuration.LatestGW2Version = newVersion
 
-	readFeed(newVersion, configuration.Language)
+	releaseNotes := resources.Translations["newVersionReleased"] + strconv.Itoa(newVersion) + "\n"
+	releaseNotes += "https://" + configuration.Language + "-forum.guildwars2.com/categories/game-release-notes" //TODO: only for en, de, fr, es ?
+
+	fmt.Println(releaseNotes)
+
+	for _, channelID := range configuration.ChannelIDsForGW2Updates {
+		fmt.Println("handleGW2Update(): sending push notification to channel: ", channelID)
+		sendLongMessage(discordSession, channelID, releaseNotes)
+	}
 }
 
 func checkForNewGW2Version() {
