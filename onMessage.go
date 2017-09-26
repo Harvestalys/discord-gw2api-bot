@@ -40,7 +40,7 @@ func shouldBotHandleCommand(session *discordgo.Session, message *discordgo.Messa
 		return isBotMentioned || isPrefix
 	}
 
-	return channel.IsPrivate || isBotMentioned || isPrefix
+	return (channel.Type == discordgo.ChannelTypeDM) || isBotMentioned || isPrefix
 }
 
 func checkForMention(mentions []*discordgo.User, botUser *discordgo.User) bool {
